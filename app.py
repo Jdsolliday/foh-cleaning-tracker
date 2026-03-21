@@ -74,19 +74,20 @@ st.dataframe(df, use_container_width=True)
 
 st.subheader("Delete Task")
 
-if not df.empty:
-    delete_labels = [
-        f"{i} | {row['Task']} | {row['Employee']} | Due: {row['Next Due'].date() if pd.notnull(row['Next Due']) else 'N/A'}"
-        for i, row in df.iterrows()
-    ]
+with st.expander("Open delete menu"):
+    if not df.empty:
+        delete_labels = [
+            f"{i} | {row['Task']} | {row['Employee']} | Due: {row['Next Due'].date() if pd.notnull(row['Next Due']) else 'N/A'}"
+            for i, row in df.iterrows()
+        ]
 
-    selected_delete = st.selectbox("Select a task to delete", delete_labels)
+        selected_delete = st.selectbox("Select a task to delete", delete_labels)
 
-    if st.button("Delete Selected Task"):
-        delete_index = int(selected_delete.split(" | ")[0])
-        df = df.drop(delete_index).reset_index(drop=True)
-        df.to_csv(file_path, index=False)
-        st.success("Task deleted.")
-        st.rerun()
-else:
-    st.info("No tasks yet.")
+        if st.button("Delete Selected Task"):
+            delete_index = int(selected_delete.split(" | ")[0])
+            df = df.drop(delete_index).reset_index(drop=True)
+            df.to_csv(file_path, index=False)
+            st.success("Task deleted.")
+            st.rerun()
+    else:
+        st.info("No tasks yet.")
