@@ -135,7 +135,33 @@ df = load_tasks()
 if "editing_task_id" not in st.session_state:
     st.session_state.editing_task_id = None
 st.subheader("Add Task")
+# Dashboard metrics
+st.subheader("Dashboard")
 
+if df.empty:
+    total_tasks = 0
+    overdue_tasks = 0
+    due_soon_tasks = 0
+    on_track_tasks = 0
+else:
+    total_tasks = len(df)
+    overdue_tasks = (df["Status"] == "Overdue").sum()
+    due_soon_tasks = (df["Status"] == "Due Soon").sum()
+    on_track_tasks = (df["Status"] == "On Track").sum()
+
+metric1, metric2, metric3, metric4 = st.columns(4)
+
+with metric1:
+    st.metric("Total Tasks", total_tasks)
+
+with metric2:
+    st.metric("Overdue", overdue_tasks)
+
+with metric3:
+    st.metric("Due Soon", due_soon_tasks)
+
+with metric4:
+    st.metric("On Track", on_track_tasks)
 col1, col2, col3 = st.columns(3)
 
 with col1:
