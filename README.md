@@ -16,7 +16,7 @@ A web-based task management system designed for front-of-house restaurant operat
 - Pandas
 
 ## Live App
-[Add your deployed link here]
+(https://foh-cleaning-tracker-87brscwpybaq39qldm5tmr.streamlit.app/)
 
 ## What This Demonstrates
 - Full-stack development (frontend + backend)
