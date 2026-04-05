@@ -163,7 +163,7 @@ with metric3:
 with metric4:
     st.metric("On Track", on_track_tasks)
 col1, col2, col3 = st.columns(3)
-st.subheader("Add Task")
+
 with col1:
     task = st.text_input("Task")
 
