@@ -1,53 +1,34 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
+from supabase import create_client, Client
 from datetime import datetime, timedelta
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="FOH Cleaning Task Tracker", layout="wide")
 
-DB_PATH = "cleaning_log.db"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+TABLE = "cleaning_tasks"
+
+
+# ── Supabase client ───────────────────────────────────────────────────────────
+
+@st.cache_resource
+def get_client() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # ── Database helpers ──────────────────────────────────────────────────────────
 
-def get_connection():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
-
-
-def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cleaning_tasks (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            task            TEXT    NOT NULL,
-            employee        TEXT    NOT NULL,
-            date_cleaned    TEXT    NOT NULL,
-            frequency_days  INTEGER NOT NULL,
-            next_due        TEXT    NOT NULL,
-            status          TEXT    NOT NULL,
-            completed       INTEGER NOT NULL DEFAULT 0
-        )
-    """)
-    # Add completed column to existing databases that predate this change
-    try:
-        cursor.execute("ALTER TABLE cleaning_tasks ADD COLUMN completed INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    conn.commit()
-    conn.close()
-
-
 def load_tasks() -> pd.DataFrame:
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM cleaning_tasks", conn)
-    conn.close()
+    response = get_client().table(TABLE).select("*").execute()
+    rows = response.data
 
-    if df.empty:
-        return df
+    if not rows:
+        return pd.DataFrame()
 
+    df = pd.DataFrame(rows)
     df["Date Cleaned"] = pd.to_datetime(df["date_cleaned"], errors="coerce")
     df["Next Due"] = pd.to_datetime(df["next_due"], errors="coerce")
     df["Frequency (days)"] = pd.to_numeric(df["frequency_days"], errors="coerce")
@@ -57,64 +38,48 @@ def load_tasks() -> pd.DataFrame:
 
 
 def get_task_by_id(task_id: int):
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM cleaning_tasks WHERE id = ?", conn, params=(task_id,))
-    conn.close()
-    return df.iloc[0] if not df.empty else None
+    response = get_client().table(TABLE).select("*").eq("id", task_id).execute()
+    return response.data[0] if response.data else None
 
 
 def add_task(task: str, employee: str, frequency: int):
     date_cleaned = datetime.today().date()
     next_due, status = _calculate_status(date_cleaned, frequency)
 
-    conn = get_connection()
-    conn.cursor().execute(
-        "INSERT INTO cleaning_tasks (task, employee, date_cleaned, frequency_days, next_due, status, completed) VALUES (?, ?, ?, ?, ?, ?, 0)",
-        (task.strip(), employee.strip(), str(date_cleaned), int(frequency), str(next_due), status),
-    )
-    conn.commit()
-    conn.close()
+    get_client().table(TABLE).insert({
+        "task":           task.strip(),
+        "employee":       employee.strip(),
+        "date_cleaned":   str(date_cleaned),
+        "frequency_days": int(frequency),
+        "next_due":       str(next_due),
+        "status":         status,
+        "completed":      0,
+    }).execute()
 
 
 def update_task(task_id: int, task: str, employee: str, date_cleaned, frequency: int):
     next_due, status = _calculate_status(date_cleaned, frequency)
 
-    conn = get_connection()
-    conn.cursor().execute(
-        """UPDATE cleaning_tasks
-           SET task = ?, employee = ?, date_cleaned = ?, frequency_days = ?, next_due = ?, status = ?
-           WHERE id = ?""",
-        (task.strip(), employee.strip(), str(date_cleaned), int(frequency), str(next_due), status, task_id),
-    )
-    conn.commit()
-    conn.close()
+    get_client().table(TABLE).update({
+        "task":           task.strip(),
+        "employee":       employee.strip(),
+        "date_cleaned":   str(date_cleaned),
+        "frequency_days": int(frequency),
+        "next_due":       str(next_due),
+        "status":         status,
+    }).eq("id", task_id).execute()
 
 
 def mark_task_complete(task_id: int):
-    conn = get_connection()
-    conn.cursor().execute(
-        "UPDATE cleaning_tasks SET completed = 1 WHERE id = ?",
-        (task_id,)
-    )
-    conn.commit()
-    conn.close()
+    get_client().table(TABLE).update({"completed": 1}).eq("id", task_id).execute()
 
 
 def restore_task(task_id: int):
-    conn = get_connection()
-    conn.cursor().execute(
-        "UPDATE cleaning_tasks SET completed = 0 WHERE id = ?",
-        (task_id,)
-    )
-    conn.commit()
-    conn.close()
+    get_client().table(TABLE).update({"completed": 0}).eq("id", task_id).execute()
 
 
 def delete_task(task_id: int):
-    conn = get_connection()
-    conn.cursor().execute("DELETE FROM cleaning_tasks WHERE id = ?", (task_id,))
-    conn.commit()
-    conn.close()
+    get_client().table(TABLE).delete().eq("id", task_id).execute()
 
 
 # ── Business logic ────────────────────────────────────────────────────────────
@@ -135,10 +100,24 @@ def _calculate_status(date_cleaned, frequency: int) -> tuple:
 
 # ── UI components ─────────────────────────────────────────────────────────────
 
+STATUS_COLORS = {
+    "Overdue":  ("#ff4b4b", "white"),
+    "Due Soon": ("#ffa500", "white"),
+    "On Track": ("#21c354", "white"),
+}
+
+def render_status_badge(status: str):
+    bg, fg = STATUS_COLORS.get(status, ("#cccccc", "black"))
+    st.markdown(
+        f'<span style="background-color:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:0.85em;font-weight:600">{status}</span>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_dashboard(df: pd.DataFrame):
     st.subheader("Dashboard")
 
-    active = df[df["completed"] == 0] if not df.empty else df
+    active   = df[df["completed"] == 0] if not df.empty else df
     total    = len(active)
     overdue  = (active["Status"] == "Overdue").sum()  if not active.empty else 0
     due_soon = (active["Status"] == "Due Soon").sum() if not active.empty else 0
@@ -199,20 +178,6 @@ def render_edit_form(row: pd.Series):
     st.divider()
 
 
-STATUS_COLORS = {
-    "Overdue":  ("#ff4b4b", "white"),
-    "Due Soon": ("#ffa500", "white"),
-    "On Track": ("#21c354", "white"),
-}
-
-def render_status_badge(status: str):
-    bg, fg = STATUS_COLORS.get(status, ("#cccccc", "black"))
-    st.markdown(
-        f'<span style="background-color:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:0.85em;font-weight:600">{status}</span>',
-        unsafe_allow_html=True,
-    )
-
-
 def render_task_row(row: pd.Series):
     col1, col2, col3, col4, col5, col6, col7 = st.columns([3, 2, 2, 2, 1, 1, 1])
     col1.write(f"**{row['Task']}**")
@@ -255,8 +220,6 @@ def render_completed_row(row: pd.Series):
 
 def main():
     st.title("FOH Cleaning Task Tracker")
-
-    init_db()
 
     if "editing_task_id" not in st.session_state:
         st.session_state.editing_task_id = None
