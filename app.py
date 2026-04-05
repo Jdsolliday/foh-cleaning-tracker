@@ -52,6 +52,7 @@ def load_tasks() -> pd.DataFrame:
 
 def get_task_by_id(task_id: int):
     conn = get_connection()
+    conn.row_factory = sqlite3.Row
     df = pd.read_sql_query("SELECT * FROM cleaning_tasks WHERE id = ?", conn, params=(task_id,))
     conn.close()
     return df.iloc[0] if not df.empty else None
@@ -196,20 +197,21 @@ def render_task_row(row: pd.Series):
     col3.write(f"Due: {row['Next Due'].date()}")
     col4.write(row["Status"])
 
-    with col5:
-        if st.button("✅", key=f"complete_{row['ID']}", help="Mark Complete"):
-            mark_task_complete(row["ID"])
-            st.rerun()
+    complete = col5.button("✅", key=f"complete_{row['ID']}", help="Mark Complete")
+    edit     = col6.button("Edit",   key=f"edit_{row['ID']}")
+    delete   = col7.button("Delete", key=f"delete_{row['ID']}")
 
-    with col6:
-        if st.button("Edit", key=f"edit_{row['ID']}"):
-            st.session_state.editing_task_id = row["ID"]
-            st.rerun()
+    if complete:
+        mark_task_complete(row["ID"])
+        st.rerun()
 
-    with col7:
-        if st.button("Delete", key=f"delete_{row['ID']}"):
-            delete_task(row["ID"])
-            st.rerun()
+    if edit:
+        st.session_state.editing_task_id = row["ID"]
+        st.rerun()
+
+    if delete:
+        delete_task(row["ID"])
+        st.rerun()
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
