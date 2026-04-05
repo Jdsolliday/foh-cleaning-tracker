@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-st.set_page_config(page_title="FOH Cleaning Task Tracker", layout="wide")
+st.set_page_config(page_title="Dry Storage Bakehouse FOH Task Tracker", layout="wide")
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -219,7 +219,7 @@ def render_completed_row(row: pd.Series):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    st.title("FOH Cleaning Task Tracker")
+    st.title("Dry Storage Bakehouse FOH Task Tracker")
 
     if "editing_task_id" not in st.session_state:
         st.session_state.editing_task_id = None
