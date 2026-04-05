@@ -84,6 +84,23 @@ def update_task(task_id: int, task: str, employee: str, date_cleaned, frequency:
     conn.close()
 
 
+def mark_task_complete(task_id: int):
+    existing = get_task_by_id(task_id)
+    if existing is None:
+        return
+
+    date_cleaned = datetime.today().date()
+    next_due, status = _calculate_status(date_cleaned, int(existing["frequency_days"]))
+
+    conn = get_connection()
+    conn.cursor().execute(
+        "UPDATE cleaning_tasks SET date_cleaned = ?, next_due = ?, status = ? WHERE id = ?",
+        (str(date_cleaned), str(next_due), status, task_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def delete_task(task_id: int):
     conn = get_connection()
     conn.cursor().execute("DELETE FROM cleaning_tasks WHERE id = ?", (task_id,))
@@ -173,18 +190,23 @@ def render_edit_form(row: pd.Series):
 
 
 def render_task_row(row: pd.Series):
-    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([3, 2, 2, 2, 1, 1, 1])
     col1.write(f"**{row['Task']}**")
     col2.write(row["Employee"])
     col3.write(f"Due: {row['Next Due'].date()}")
     col4.write(row["Status"])
 
     with col5:
+        if st.button("✅", key=f"complete_{row['ID']}", help="Mark Complete"):
+            mark_task_complete(row["ID"])
+            st.rerun()
+
+    with col6:
         if st.button("Edit", key=f"edit_{row['ID']}"):
             st.session_state.editing_task_id = row["ID"]
             st.rerun()
 
-    with col6:
+    with col7:
         if st.button("Delete", key=f"delete_{row['ID']}"):
             delete_task(row["ID"])
             st.rerun()
