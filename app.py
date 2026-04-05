@@ -199,12 +199,27 @@ def render_edit_form(row: pd.Series):
     st.divider()
 
 
+STATUS_COLORS = {
+    "Overdue":  ("#ff4b4b", "white"),
+    "Due Soon": ("#ffa500", "white"),
+    "On Track": ("#21c354", "white"),
+}
+
+def render_status_badge(status: str):
+    bg, fg = STATUS_COLORS.get(status, ("#cccccc", "black"))
+    st.markdown(
+        f'<span style="background-color:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:0.85em;font-weight:600">{status}</span>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_task_row(row: pd.Series):
     col1, col2, col3, col4, col5, col6, col7 = st.columns([3, 2, 2, 2, 1, 1, 1])
     col1.write(f"**{row['Task']}**")
     col2.write(row["Employee"])
     col3.write(f"Due: {row['Next Due'].date()}")
-    col4.write(row["Status"])
+    with col4:
+        render_status_badge(row["Status"])
 
     complete = col5.button("✅", key=f"complete_{row['ID']}", help="Mark Complete")
     edit     = col6.button("Edit",   key=f"edit_{row['ID']}")
