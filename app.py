@@ -128,25 +128,26 @@ if st.button("Add Task"):
         st.warning("Please enter both a task and employee.")
 
 st.subheader("Current Tasks")
-if not df.empty:
-    st.dataframe(df, use_container_width=True)
-else:
+
+if df.empty:
     st.info("No tasks yet.")
+else:
+    for _, row in df.iterrows():
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
 
-st.subheader("Delete Task")
+        with col1:
+            st.write(f"**{row['Task']}**")
 
-with st.expander("Open delete menu"):
-    if not df.empty:
-        delete_options = {
-            f"{row['Task']} | {row['Employee']} | Due: {row['Next Due'].date() if pd.notnull(row['Next Due']) else 'N/A'}": row["ID"]
-            for _, row in df.iterrows()
-        }
+        with col2:
+            st.write(row["Employee"])
 
-        selected_label = st.selectbox("Select a task to delete", list(delete_options.keys()))
+        with col3:
+            st.write(f"Due: {row['Next Due'].date()}")
 
-        if st.button("Delete Selected Task"):
-            delete_task(delete_options[selected_label])
-            st.success("Task deleted.")
-            st.rerun()
-    else:
-        st.info("No tasks yet.")
+        with col4:
+            st.write(row["Status"])
+
+        with col5:
+            if st.button("Delete", key=f"delete_{row['ID']}"):
+                delete_task(row["ID"])
+                st.rerun()
