@@ -203,7 +203,11 @@ def main():
     df = load_tasks()
 
     render_dashboard(df)
+    st.divider()
+
+    st.subheader("Add Task")
     render_add_task_form()
+    st.divider()
 
     st.subheader("Current Tasks")
 
