@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Dry Storage Bakehouse FOH Task Tracker", layout="wide")
 
-SUPABASE_URL = "https://rprtpdncicpyevngewvh.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwcnRwZG5jaWNweWV2bmdld3ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzNTgwNjIsImV4cCI6MjA5MDkzNDA2Mn0.W5q14byy9Px09LHwAlah7q-gNtmKi07xP8b3z1WAY3k"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 TABLE = "cleaning_tasks"
 
 
