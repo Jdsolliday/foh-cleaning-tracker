@@ -18,7 +18,8 @@ def get_connection():
 
 def init_db():
     conn = get_connection()
-    conn.cursor().execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cleaning_tasks (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             task            TEXT    NOT NULL,
@@ -26,9 +27,15 @@ def init_db():
             date_cleaned    TEXT    NOT NULL,
             frequency_days  INTEGER NOT NULL,
             next_due        TEXT    NOT NULL,
-            status          TEXT    NOT NULL
+            status          TEXT    NOT NULL,
+            completed       INTEGER NOT NULL DEFAULT 0
         )
     """)
+    # Add completed column to existing databases that predate this change
+    try:
+        cursor.execute("ALTER TABLE cleaning_tasks ADD COLUMN completed INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -44,15 +51,13 @@ def load_tasks() -> pd.DataFrame:
     df["Date Cleaned"] = pd.to_datetime(df["date_cleaned"], errors="coerce")
     df["Next Due"] = pd.to_datetime(df["next_due"], errors="coerce")
     df["Frequency (days)"] = pd.to_numeric(df["frequency_days"], errors="coerce")
-
     df = df.rename(columns={"id": "ID", "task": "Task", "employee": "Employee", "status": "Status"})
 
-    return df[["ID", "Task", "Employee", "Date Cleaned", "Frequency (days)", "Next Due", "Status"]].sort_values("Next Due")
+    return df[["ID", "Task", "Employee", "Date Cleaned", "Frequency (days)", "Next Due", "Status", "completed"]].sort_values("Next Due")
 
 
 def get_task_by_id(task_id: int):
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
     df = pd.read_sql_query("SELECT * FROM cleaning_tasks WHERE id = ?", conn, params=(task_id,))
     conn.close()
     return df.iloc[0] if not df.empty else None
@@ -64,7 +69,7 @@ def add_task(task: str, employee: str, frequency: int):
 
     conn = get_connection()
     conn.cursor().execute(
-        "INSERT INTO cleaning_tasks (task, employee, date_cleaned, frequency_days, next_due, status) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO cleaning_tasks (task, employee, date_cleaned, frequency_days, next_due, status, completed) VALUES (?, ?, ?, ?, ?, ?, 0)",
         (task.strip(), employee.strip(), str(date_cleaned), int(frequency), str(next_due), status),
     )
     conn.commit()
@@ -86,17 +91,20 @@ def update_task(task_id: int, task: str, employee: str, date_cleaned, frequency:
 
 
 def mark_task_complete(task_id: int):
-    existing = get_task_by_id(task_id)
-    if existing is None:
-        return
-
-    date_cleaned = datetime.today().date()
-    next_due, status = _calculate_status(date_cleaned, int(existing["frequency_days"]))
-
     conn = get_connection()
     conn.cursor().execute(
-        "UPDATE cleaning_tasks SET date_cleaned = ?, next_due = ?, status = ? WHERE id = ?",
-        (str(date_cleaned), str(next_due), status, task_id),
+        "UPDATE cleaning_tasks SET completed = 1 WHERE id = ?",
+        (task_id,)
+    )
+    conn.commit()
+    conn.close()
+
+
+def restore_task(task_id: int):
+    conn = get_connection()
+    conn.cursor().execute(
+        "UPDATE cleaning_tasks SET completed = 0 WHERE id = ?",
+        (task_id,)
     )
     conn.commit()
     conn.close()
@@ -130,10 +138,11 @@ def _calculate_status(date_cleaned, frequency: int) -> tuple:
 def render_dashboard(df: pd.DataFrame):
     st.subheader("Dashboard")
 
-    total = len(df)
-    overdue   = (df["Status"] == "Overdue").sum()  if not df.empty else 0
-    due_soon  = (df["Status"] == "Due Soon").sum() if not df.empty else 0
-    on_track  = (df["Status"] == "On Track").sum() if not df.empty else 0
+    active = df[df["completed"] == 0] if not df.empty else df
+    total    = len(active)
+    overdue  = (active["Status"] == "Overdue").sum()  if not active.empty else 0
+    due_soon = (active["Status"] == "Due Soon").sum() if not active.empty else 0
+    on_track = (active["Status"] == "On Track").sum() if not active.empty else 0
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Tasks", total)
@@ -162,8 +171,8 @@ def render_edit_form(row: pd.Series):
     existing = get_task_by_id(row["ID"])
 
     col1, col2, col3 = st.columns(3)
-    edited_task     = col1.text_input("Task",     value=existing["task"],     key=f"edit_task_{row['ID']}")
-    edited_employee = col2.text_input("Employee", value=existing["employee"], key=f"edit_employee_{row['ID']}")
+    edited_task     = col1.text_input("Task",         value=existing["task"],     key=f"edit_task_{row['ID']}")
+    edited_employee = col2.text_input("Employee",     value=existing["employee"], key=f"edit_employee_{row['ID']}")
     edited_date     = col3.date_input("Date Cleaned", value=pd.to_datetime(existing["date_cleaned"]).date(), key=f"edit_date_{row['ID']}")
 
     edited_frequency = st.number_input(
@@ -214,6 +223,19 @@ def render_task_row(row: pd.Series):
         st.rerun()
 
 
+def render_completed_row(row: pd.Series):
+    col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+    col1.write(f"~~{row['Task']}~~")
+    col2.write(row["Employee"])
+    col3.write(f"Cleaned: {row['Date Cleaned'].date()}")
+    col4.write("Completed")
+
+    restore = col5.button("↩️ Restore", key=f"restore_{row['ID']}")
+    if restore:
+        restore_task(row["ID"])
+        st.rerun()
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -225,6 +247,8 @@ def main():
         st.session_state.editing_task_id = None
 
     df = load_tasks()
+    active_df    = df[df["completed"] == 0] if not df.empty else df
+    completed_df = df[df["completed"] == 1] if not df.empty else df
 
     render_dashboard(df)
     st.divider()
@@ -234,15 +258,23 @@ def main():
     st.divider()
 
     st.subheader("Current Tasks")
-
-    if df.empty:
-        st.info("No tasks yet.")
+    if active_df.empty:
+        st.info("No active tasks.")
     else:
-        for _, row in df.iterrows():
+        for _, row in active_df.iterrows():
             if st.session_state.editing_task_id == row["ID"]:
                 render_edit_form(row)
             else:
                 render_task_row(row)
+
+    st.divider()
+
+    st.subheader("Completed")
+    if completed_df.empty:
+        st.info("No completed tasks yet.")
+    else:
+        for _, row in completed_df.iterrows():
+            render_completed_row(row)
 
 
 if __name__ == "__main__":
