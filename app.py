@@ -10,6 +10,7 @@ st.set_page_config(page_title="Dry Storage Bakehouse FOH Task Tracker", layout="
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 TABLE = "cleaning_tasks"
+STAFF_PASSWORD = "JohnnyistheGOAT"
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -33,7 +34,6 @@ def render_auth():
 
 def is_staff() -> bool:
     return st.session_state.get("authenticated", False)
-
 
 
 
