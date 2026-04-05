@@ -12,6 +12,31 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 TABLE = "cleaning_tasks"
 
 
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+def render_auth():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        with st.sidebar:
+            st.subheader("Staff Login")
+            password = st.text_input("Password", type="password")
+            if st.button("Login"):
+                if password == STAFF_PASSWORD:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect password.")
+            st.caption("No password? You can still view the app as a guest.")
+
+
+def is_staff() -> bool:
+    return st.session_state.get("authenticated", False)
+
+
+
+
 # ── Supabase client ───────────────────────────────────────────────────────────
 
 @st.cache_resource
@@ -178,7 +203,7 @@ def render_edit_form(row: pd.Series):
     st.divider()
 
 
-def render_task_row(row: pd.Series):
+def render_task_row(row: pd.Series, editable: bool = True):
     col1, col2, col3, col4, col5, col6, col7 = st.columns([3, 2, 2, 2, 1, 1, 1])
     col1.write(f"**{row['Task']}**")
     col2.write(row["Employee"])
@@ -186,40 +211,44 @@ def render_task_row(row: pd.Series):
     with col4:
         render_status_badge(row["Status"])
 
-    complete = col5.button("✅", key=f"complete_{row['ID']}", help="Mark Complete")
-    edit     = col6.button("Edit",   key=f"edit_{row['ID']}")
-    delete   = col7.button("Delete", key=f"delete_{row['ID']}")
+    if editable:
+        complete = col5.button("✅", key=f"complete_{row['ID']}", help="Mark Complete")
+        edit     = col6.button("Edit",   key=f"edit_{row['ID']}")
+        delete   = col7.button("Delete", key=f"delete_{row['ID']}")
 
-    if complete:
-        mark_task_complete(row["ID"])
-        st.rerun()
+        if complete:
+            mark_task_complete(row["ID"])
+            st.rerun()
 
-    if edit:
-        st.session_state.editing_task_id = row["ID"]
-        st.rerun()
+        if edit:
+            st.session_state.editing_task_id = row["ID"]
+            st.rerun()
 
-    if delete:
-        delete_task(row["ID"])
-        st.rerun()
+        if delete:
+            delete_task(row["ID"])
+            st.rerun()
 
 
-def render_completed_row(row: pd.Series):
+def render_completed_row(row: pd.Series, editable: bool = True):
     col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
     col1.write(f"~~{row['Task']}~~")
     col2.write(row["Employee"])
     col3.write(f"Cleaned: {row['Date Cleaned'].date()}")
     col4.write("Completed")
 
-    restore = col5.button("↩️ Restore", key=f"restore_{row['ID']}")
-    if restore:
-        restore_task(row["ID"])
-        st.rerun()
+    if editable:
+        restore = col5.button("↩️ Restore", key=f"restore_{row['ID']}")
+        if restore:
+            restore_task(row["ID"])
+            st.rerun()
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     st.title("Dry Storage Bakehouse FOH Task Tracker")
+
+    render_auth()
 
     if "editing_task_id" not in st.session_state:
         st.session_state.editing_task_id = None
@@ -231,19 +260,22 @@ def main():
     render_dashboard(df)
     st.divider()
 
-    st.subheader("Add Task")
-    render_add_task_form()
-    st.divider()
+    if is_staff():
+        st.subheader("Add Task")
+        render_add_task_form()
+        st.divider()
+    else:
+        st.sidebar.info("👀 Viewing as guest — login for full access.")
 
     st.subheader("Current Tasks")
     if active_df.empty:
         st.info("No active tasks.")
     else:
         for _, row in active_df.iterrows():
-            if st.session_state.editing_task_id == row["ID"]:
+            if is_staff() and st.session_state.editing_task_id == row["ID"]:
                 render_edit_form(row)
             else:
-                render_task_row(row)
+                render_task_row(row, editable=is_staff())
 
     st.divider()
 
@@ -252,7 +284,7 @@ def main():
         st.info("No completed tasks yet.")
     else:
         for _, row in completed_df.iterrows():
-            render_completed_row(row)
+            render_completed_row(row, editable=is_staff())
 
 
 if __name__ == "__main__":
