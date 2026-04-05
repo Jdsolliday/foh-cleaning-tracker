@@ -134,7 +134,7 @@ init_db()
 df = load_tasks()
 if "editing_task_id" not in st.session_state:
     st.session_state.editing_task_id = None
-st.subheader("Add Task")
+
 # Dashboard metrics
 st.subheader("Dashboard")
 
@@ -180,7 +180,7 @@ if st.button("Add Task"):
         st.rerun()
     else:
         st.warning("Please enter both a task and employee.")
-
+st.subheader("Add Task")
 st.subheader("Current Tasks")
 
 if df.empty:
